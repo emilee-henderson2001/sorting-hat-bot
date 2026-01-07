@@ -50,7 +50,7 @@ client.on("interactionCreate", async (interaction) => {
     // Party Planners role OR Manage Server permission
     const canManage =
       interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
-      interaction.member?.roles?.cache?.some(r => r.name === "Party Planners");
+      interaction.member?.roles?.cache?.some(r => r.name === "Party Planner");
 
     // Admin-only commands
     if (!canManage && (sub === "set" || sub === "remove" || sub === "list")) {
@@ -236,7 +236,7 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "reset") {
     const canManage =
       interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
-      interaction.member?.roles?.cache?.some(r => r.name === "Party Planners");
+      interaction.member?.roles?.cache?.some(r => r.name === "Party Planner");
 
     if (!canManage) {
       return interaction.reply({
