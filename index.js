@@ -6,7 +6,7 @@ const { loadData, saveData, getGuild } = require("./data");
 const PARTY_PLANNER_ROLE_ID = "1353222780883177512";
 
 // Extra admins by user ID (add IDs here if you want)
-// For now we also check username 'delnevodan' below.
+// We also treat username 'delnevodan' as an extra admin.
 const EXTRA_ADMINS = [
   // "123456789012345678", // example – put real user IDs here if you want
 ];
@@ -167,7 +167,7 @@ client.on("interactionCreate", async (interaction) => {
 
     if (g.pendingByUser[userId]) {
       return interaction.reply({
-        content: `⚠️ You already drew **${g.pendingByUser[userId]}**.\nUse **/keep** or **/redraw**.`,
+        content: `⚠️ You already drew **${g.pendingByUser[userId]}**.\nUse **/keep** or **/redraw** (in this channel).`,
         ephemeral: true,
       });
     }
@@ -182,24 +182,22 @@ client.on("interactionCreate", async (interaction) => {
     g.pendingByUser[userId] = pick;
     saveData(data);
 
-    // Public message everyone can see (no channel.send, just reply)
-    // Result stays secret in DM.
     try {
       // DM the result
       await interaction.user.send(
-        `🎩 Your draw: **${pick}**\nUse **/keep** to lock it in, or **/redraw** to swap.`
+        `🎩 Your draw: **${pick}**\nUse **/keep** to lock it in, or **/redraw** to swap.\n(Use these commands back in the server, not in DMs.)`
       );
 
       // Public reply in the channel
       await interaction.reply({
-        content: `🎩 ${interaction.user} drew from the hat. Check your DMs for your draw!`,
+        content: `🎩 ${interaction.user} drew from the hat. Check your DMs, then do **/keep** or **/redraw** here in this channel.`,
         ephemeral: false,
       });
     } catch (err) {
       console.error("Failed to DM user draw result:", err);
       // Fallback: show result privately if DMs are blocked
       await interaction.reply({
-        content: `🎩 ${interaction.user}, your draw: **${pick}**\n(Your DMs are closed, so I couldn’t message you.)`,
+        content: `🎩 ${interaction.user}, your draw: **${pick}**\nUse **/keep** or **/redraw** here in this channel.\n(Your DMs are closed, so I couldn’t message you.)`,
         ephemeral: true,
       });
     }
@@ -236,19 +234,19 @@ client.on("interactionCreate", async (interaction) => {
     try {
       // DM the new result
       await interaction.user.send(
-        `🔄 Redraw! New draw: **${pick}**\nUse **/keep** to lock it in, or **/redraw** to swap again.`
+        `🔄 Redraw! New draw: **${pick}**\nUse **/keep** to lock it in, or **/redraw** again.\n(Use these commands back in the server, not in DMs.)`
       );
 
       // Public reply (visible to everyone)
       await interaction.reply({
-        content: `🔄 ${interaction.user} redrew from the hat. Check your DMs for your new draw!`,
+        content: `🔄 ${interaction.user} redrew from the hat. Check your DMs, then do **/keep** or **/redraw** here in this channel.`,
         ephemeral: false,
       });
     } catch (err) {
       console.error("Failed to DM user redraw result:", err);
       // Fallback: private in-channel
       await interaction.reply({
-        content: `🔄 ${interaction.user}, your new draw: **${pick}**\n(Your DMs are closed, so I couldn’t message you.)`,
+        content: `🔄 ${interaction.user}, your new draw: **${pick}**\nUse **/keep** or **/redraw** here in this channel.\n(Your DMs are closed, so I couldn’t message you.)`,
         ephemeral: true,
       });
     }
