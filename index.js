@@ -47,13 +47,15 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "hat") {
     const sub = interaction.options.getSubcommand();
 
-    const member = interaction.member;
-    const canManage = member.permissions?.has(PermissionFlagsBits.ManageGuild);
+    // Party Planners role OR Manage Server permission
+    const canManage =
+      interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
+      interaction.member?.roles?.cache?.some(r => r.name === "Party Planners");
 
     // Admin-only commands
     if (!canManage && (sub === "set" || sub === "remove" || sub === "list")) {
       return interaction.reply({
-        content: "Only mods/admins can use that. You *can* use **/hat add** 🙂",
+        content: "Only **Party Planners** or server admins can use that. You *can* use **/hat add** 🙂",
         ephemeral: true,
       });
     }
@@ -186,6 +188,7 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
+    // put back old draw
     g.hat.push(current);
 
     const index = randomIndex(g.hat);
@@ -231,12 +234,13 @@ client.on("interactionCreate", async (interaction) => {
   // /reset (admins only)
   // =========================
   if (interaction.commandName === "reset") {
-    const member = interaction.member;
-    const canManage = member.permissions?.has(PermissionFlagsBits.ManageGuild);
+    const canManage =
+      interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
+      interaction.member?.roles?.cache?.some(r => r.name === "Party Planners");
 
     if (!canManage) {
       return interaction.reply({
-        content: "You need **Manage Server** to reset.",
+        content: "You need **Party Planners** or **Manage Server** to reset.",
         ephemeral: true,
       });
     }
