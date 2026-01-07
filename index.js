@@ -5,6 +5,12 @@ const { loadData, saveData, getGuild } = require("./data");
 // Party Planner role ID from Discord
 const PARTY_PLANNER_ROLE_ID = "1353222780883177512";
 
+// Extra admins by user ID (add IDs here if you want)
+// For now we also check username 'delnevodan' below.
+const EXTRA_ADMINS = [
+  // "123456789012345678", // example – put real user IDs here if you want
+];
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // Pick random index (supports duplicates)
@@ -13,6 +19,8 @@ function randomIndex(arr) {
 }
 
 // Post a visible action log to the channel (for moderator visibility)
+// Note: This still uses channel.send and may fail if the bot has no send permission.
+// It's "nice to have", not required for the game to work.
 async function announceAction(interaction, message) {
   try {
     await interaction.channel?.send(message);
@@ -21,17 +29,6 @@ async function announceAction(interaction, message) {
   }
 }
 
-// Private response in-channel (ephemeral) and DM backup
-async function privateSend(interaction, content) {
-  await interaction.reply({ content, ephemeral: true });
-  try {
-    await interaction.user.send(content);
-  } catch {
-    // DM blocked; ephemeral already sent
-  }
-}
-
-// Use "clientReady" to avoid deprecation warnings in newer discord.js
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 });
@@ -45,24 +42,30 @@ client.on("interactionCreate", async (interaction) => {
   const data = loadData();
   const g = getGuild(data, interaction.guildId);
 
+  // Helper: who counts as admin for hat/reset?
+  const isPartyPlanner =
+    interaction.member?.roles?.cache?.has(PARTY_PLANNER_ROLE_ID) ?? false;
+
+  const isExtraAdmin =
+    EXTRA_ADMINS.includes(interaction.user.id) ||
+    interaction.user.username === "delnevodan";
+
+  const hasManageServer =
+    interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false;
+
+  const isHatAdmin = hasManageServer || isPartyPlanner || isExtraAdmin;
+
   // =========================
   // /hat
   // =========================
   if (interaction.commandName === "hat") {
     const sub = interaction.options.getSubcommand();
 
-    // Admin check:
-    // - Manage Server permission
-    // - OR Party Planner role
-    const canManage =
-      interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
-      interaction.member?.roles?.cache?.has(PARTY_PLANNER_ROLE_ID);
-
     // Admin-only subcommands
-    if (!canManage && (sub === "set" || sub === "remove" || sub === "list")) {
+    if (!isHatAdmin && (sub === "set" || sub === "remove" || sub === "list")) {
       return interaction.reply({
         content:
-          "Only **Party Planner** or server admins can use that. You *can* use **/hat add** 🙂",
+          "Only **Party Planner**, server admins, or approved admins can use that. You *can* use **/hat add** 🙂",
         ephemeral: true,
       });
     }
@@ -179,13 +182,27 @@ client.on("interactionCreate", async (interaction) => {
     g.pendingByUser[userId] = pick;
     saveData(data);
 
-    // Public log: who drew (but not what they got)
-    await announceAction(interaction, `🎩 ${interaction.user} drew from the hat.`);
+    // Public message everyone can see (no channel.send, just reply)
+    // Result stays secret in DM.
+    try {
+      // DM the result
+      await interaction.user.send(
+        `🎩 Your draw: **${pick}**\nUse **/keep** to lock it in, or **/redraw** to swap.`
+      );
 
-    return privateSend(
-      interaction,
-      `🎩 Your draw: **${pick}**\nUse **/keep** to lock it in, or **/redraw** to swap.`
-    );
+      // Public reply in the channel
+      await interaction.reply({
+        content: `🎩 ${interaction.user} drew from the hat. Check your DMs for your draw!`,
+        ephemeral: false,
+      });
+    } catch (err) {
+      console.error("Failed to DM user draw result:", err);
+      // Fallback: show result privately if DMs are blocked
+      await interaction.reply({
+        content: `🎩 ${interaction.user}, your draw: **${pick}**\n(Your DMs are closed, so I couldn’t message you.)`,
+        ephemeral: true,
+      });
+    }
   }
 
   // =========================
@@ -216,12 +233,25 @@ client.on("interactionCreate", async (interaction) => {
     g.pendingByUser[userId] = pick;
     saveData(data);
 
-    await announceAction(interaction, `🔄 ${interaction.user} redrew from the hat.`);
+    try {
+      // DM the new result
+      await interaction.user.send(
+        `🔄 Redraw! New draw: **${pick}**\nUse **/keep** to lock it in, or **/redraw** to swap again.`
+      );
 
-    return privateSend(
-      interaction,
-      `🔄 Redraw! New draw: **${pick}**\n`
-    );
+      // Public reply (visible to everyone)
+      await interaction.reply({
+        content: `🔄 ${interaction.user} redrew from the hat. Check your DMs for your new draw!`,
+        ephemeral: false,
+      });
+    } catch (err) {
+      console.error("Failed to DM user redraw result:", err);
+      // Fallback: private in-channel
+      await interaction.reply({
+        content: `🔄 ${interaction.user}, your new draw: **${pick}**\n(Your DMs are closed, so I couldn’t message you.)`,
+        ephemeral: true,
+      });
+    }
   }
 
   // =========================
@@ -241,25 +271,33 @@ client.on("interactionCreate", async (interaction) => {
     delete g.pendingByUser[userId];
     saveData(data);
 
-    await announceAction(interaction, `✅ ${interaction.user} kept their draw.`);
+    try {
+      // DM confirmation
+      await interaction.user.send(
+        `✅ Kept: **${current}**\nThat entry is now permanently removed from the hat.`
+      );
 
-    return privateSend(
-      interaction,
-      `✅ Kept: **${current}**\nThat entry is now permanently removed from the hat.`
-    );
+      // Public reply (everyone can see they locked in a draw)
+      await interaction.reply({
+        content: `✅ ${interaction.user} kept their draw.`,
+        ephemeral: false,
+      });
+    } catch (err) {
+      console.error("Failed to DM user keep result:", err);
+      await interaction.reply({
+        content: `✅ ${interaction.user} kept: **${current}**\n(Your DMs are closed, so I couldn’t message you.)`,
+        ephemeral: true,
+      });
+    }
   }
 
   // =========================
   // /reset (admins only)
   // =========================
   if (interaction.commandName === "reset") {
-    const canManage =
-      interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
-      interaction.member?.roles?.cache?.has(PARTY_PLANNER_ROLE_ID);
-
-    if (!canManage) {
+    if (!isHatAdmin) {
       return interaction.reply({
-        content: "You need **Party Planner** or **Manage Server** to reset.",
+        content: "You need **Party Planner**, **Manage Server**, or to be an approved admin to reset.",
         ephemeral: true,
       });
     }
