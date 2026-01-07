@@ -2,6 +2,9 @@ require("dotenv").config();
 const { Client, GatewayIntentBits, PermissionFlagsBits } = require("discord.js");
 const { loadData, saveData, getGuild } = require("./data");
 
+// Party Planner role ID from Discord
+const PARTY_PLANNER_ROLE_ID = "1353222780883177512";
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // Pick random index (supports duplicates)
@@ -28,6 +31,7 @@ async function privateSend(interaction, content) {
   }
 }
 
+// Use "clientReady" to avoid deprecation warnings in newer discord.js
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 });
@@ -47,15 +51,18 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "hat") {
     const sub = interaction.options.getSubcommand();
 
-    // Party Planners role OR Manage Server permission
+    // Admin check:
+    // - Manage Server permission
+    // - OR Party Planner role
     const canManage =
       interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
-      interaction.member?.roles?.cache?.some(r => r.name === "Party Planner");
+      interaction.member?.roles?.cache?.has(PARTY_PLANNER_ROLE_ID);
 
-    // Admin-only commands
+    // Admin-only subcommands
     if (!canManage && (sub === "set" || sub === "remove" || sub === "list")) {
       return interaction.reply({
-        content: "Only **Party Planners** or server admins can use that. You *can* use **/hat add** 🙂",
+        content:
+          "Only **Party Planner** or server admins can use that. You *can* use **/hat add** 🙂",
         ephemeral: true,
       });
     }
@@ -69,6 +76,11 @@ client.on("interactionCreate", async (interaction) => {
 
       g.pendingByUser = {};
       saveData(data);
+
+      await announceAction(
+        interaction,
+        `🪄 ${interaction.user} reset the hat with **${g.hat.length}** entries.`
+      );
 
       return interaction.reply({
         content: `✅ Hat set with **${g.hat.length}** entries.`,
@@ -119,6 +131,12 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       saveData(data);
+
+      await announceAction(
+        interaction,
+        `➖ ${interaction.user} removed an entry from the hat.`
+      );
+
       return interaction.reply({
         content: `✅ Removed one instance of **${name}**.`,
         ephemeral: true,
@@ -161,6 +179,7 @@ client.on("interactionCreate", async (interaction) => {
     g.pendingByUser[userId] = pick;
     saveData(data);
 
+    // Public log: who drew (but not what they got)
     await announceAction(interaction, `🎩 ${interaction.user} drew from the hat.`);
 
     return privateSend(
@@ -188,7 +207,7 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // put back old draw
+    // Put back old draw
     g.hat.push(current);
 
     const index = randomIndex(g.hat);
@@ -236,11 +255,11 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "reset") {
     const canManage =
       interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ||
-      interaction.member?.roles?.cache?.some(r => r.name === "Party Planner");
+      interaction.member?.roles?.cache?.has(PARTY_PLANNER_ROLE_ID);
 
     if (!canManage) {
       return interaction.reply({
-        content: "You need **Party Planners** or **Manage Server** to reset.",
+        content: "You need **Party Planner** or **Manage Server** to reset.",
         ephemeral: true,
       });
     }
@@ -248,6 +267,11 @@ client.on("interactionCreate", async (interaction) => {
     g.hat = [];
     g.pendingByUser = {};
     saveData(data);
+
+    await announceAction(
+      interaction,
+      `🧹 ${interaction.user} reset the hat and cleared all pending draws.`
+    );
 
     return interaction.reply({
       content: "🧹 Reset complete: hat cleared and pending draws cleared.",
